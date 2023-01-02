@@ -1,11 +1,21 @@
 [package]
 name = "pixum"
 version = "0.1.0"
+authors = ["astral4 <88992929+astral4@users.noreply.github.com>"]
 edition = "2021"
+license = "MIT"
+publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
+anyhow = "1.0.68"
 axum = { version = "0.6.1", features = ["http2"] }
-reqwest = "0.11.13"
+reqwest = { version = "0.11.13", features = ["json"] }
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
