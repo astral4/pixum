@@ -11,7 +11,14 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Welcome to Pixum" }))
-        .route("/:work_id", get(work).with_state(shared_state.clone()))
+        .route(
+            "/:work_id",
+            get(work::info).with_state(shared_state.clone()),
+        )
+        .route(
+            "/:work_id/:index",
+            get(work::source).with_state(shared_state.clone()),
+        )
         .with_state(shared_state);
 
     Server::bind(&"0.0.0.0:3000".parse().unwrap())

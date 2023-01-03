@@ -2,11 +2,11 @@
 #![forbid(unsafe_code)]
 
 mod routes;
+pub use routes::*;
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use reqwest::header::{HeaderMap, HeaderValue};
-pub use routes::*;
-
 use reqwest::Client;
 use std::time::Duration;
 

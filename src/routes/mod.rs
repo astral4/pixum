@@ -1,2 +1,1 @@
-mod work;
-pub use work::*;
+pub mod work;
