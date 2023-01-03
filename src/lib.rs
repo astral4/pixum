@@ -40,17 +40,22 @@ impl Default for AppState {
 type AppResult<T> = Result<T, AppError>;
 
 pub enum AppError {
+    InvalidUrl,
     ArtworkUnavailable { msg: String },
     ServerUnreachable,
     ZeroQuery,
     TooHighQuery { max: u8 },
-    Internal { msg: String },
+    Internal,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         {
             match self {
+                Self::InvalidUrl => (
+                    StatusCode::NOT_FOUND,
+                    String::from("The requested URL is invalid.")
+                ),
                 Self::ArtworkUnavailable { msg } => (
                     StatusCode::NOT_FOUND,
                     format!("Information of the requested work could not be retrieved. {msg}"),
@@ -74,9 +79,9 @@ impl IntoResponse for AppError {
                     }
                     
                 ),
-                Self::Internal { msg } => (
+                Self::Internal => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("An internal server error occurred. {msg}"),
+                    String::from("An internal server error occurred."),
                 ),
             }
         }

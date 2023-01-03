@@ -1,7 +1,7 @@
 use crate::{AppError, AppResult, AppState};
 use ahash::HashMap;
 use axum::{
-    extract::{Path, State},
+    extract::{rejection::PathRejection, Path, State},
     http::header,
     response::IntoResponse,
 };
@@ -10,6 +10,8 @@ use mime_guess::Mime;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
+
+type PathResult<T> = Result<Path<T>, PathRejection>;
 
 #[derive(Deserialize)]
 struct OtherWorkInfo {
@@ -46,36 +48,50 @@ struct QueryResponse {
 
 /// # Errors
 /// This function fails if:
+/// - `work_id` is invalid
 /// - HTTP request to Pixiv's API fails
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
 pub async fn info(
-    Path(work_id): Path<u32>,
+    work_id: PathResult<u32>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<String> {
-    let data = fetch_work_info(&state.client, work_id).await?;
+    if let Ok(id) = work_id {
+        let data = fetch_work_info(&state.client, id.0).await?;
 
-    if let Some(link) = data.urls.original {
-        Ok(link)
+        if let Some(link) = data.urls.original {
+            Ok(link)
+        } else {
+            Ok(String::from("No link found"))
+        }
     } else {
-        Ok(String::from("No link found"))
+        Err(AppError::InvalidUrl)
     }
 }
 
 /// # Errors
 /// This function fails if:
+/// - `work_id` or `index` are invalid
 /// - HTTP request to Pixiv's API fails
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
 pub async fn source(
-    Path((work_id, index)): Path<(u32, u8)>,
+    work_info: PathResult<(u32, u8)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
+    if let Ok(Path((work_id, index))) = work_info {
+        get_image_data(&state.client, work_id, index).await
+    } else {
+        Err(AppError::InvalidUrl)
+    }
+}
+
+async fn get_image_data(client: &Client, work_id: u32, index: u8) -> AppResult<impl IntoResponse> {
     if index == 0 {
         return Err(AppError::ZeroQuery);
     }
 
-    let data = fetch_work_info(&state.client, work_id).await?;
+    let data = fetch_work_info(client, work_id).await?;
 
     // The value of num_entries is 1 more than the actual number of images
     if index > data.num_entries - 1 {
@@ -88,7 +104,7 @@ pub async fn source(
     let mime_type;
 
     if let Some(link) = data.urls.original {
-        image_data = fetch_image_data(&state.client, &link, work_id, index).await?;
+        image_data = fetch_image_data(client, &link, work_id, index).await?;
         mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
         // TODO: Try different extensions if file isn't found
@@ -104,7 +120,7 @@ pub async fn source(
             .replace("_square1200", "")
             .replace("_custom1200", "");
 
-        image_data = fetch_image_data(&state.client, &target_link, work_id, index).await?;
+        image_data = fetch_image_data(client, &target_link, work_id, index).await?;
         mime_type = mime_guess::from_path(target_link).first_or_octet_stream();
     }
     Ok((
@@ -118,7 +134,7 @@ async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
         .get(format!("https://www.pixiv.net/ajax/illust/{work_id}"))
         .send()
         .await
-        .map_err(|e| AppError::Internal { msg: e.to_string() })?
+        .map_err(|_| AppError::Internal)?
         .json()
         .await
         .map_err(|_| AppError::ServerUnreachable)?;
@@ -152,7 +168,7 @@ async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -
         )
         .send()
         .await
-        .map_err(|e| AppError::Internal { msg: e.to_string() })?
+        .map_err(|_| AppError::Internal)?
         .bytes()
         .await
         .map_err(|_| AppError::ServerUnreachable)?;
