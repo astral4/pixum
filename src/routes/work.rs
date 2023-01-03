@@ -1,7 +1,12 @@
 use crate::{AppError, AppResult, AppState};
 use ahash::HashMap;
-use axum::extract::{Path, State};
+use axum::{
+    extract::{Path, State},
+    http::header,
+    response::IntoResponse,
+};
 use bytes::Bytes;
+use mime_guess::Mime;
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -60,16 +65,17 @@ pub async fn info(
 /// - HTTP request to Pixiv's API fails
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
-// TODO: add response headers (content-type, etc)
 pub async fn source(
     Path((work_id, index)): Path<(u32, u8)>,
     State(state): State<Arc<AppState>>,
-) -> AppResult<Bytes> {
+) -> AppResult<impl IntoResponse> {
     let data = fetch_work_info(&state.client, work_id).await?;
+    let image_data;
+    let mime_type;
 
     if let Some(link) = data.urls.original {
-        println!("Found original link");
-        fetch_image_data(&state.client, &link, work_id, index).await
+        image_data = fetch_image_data(&state.client, &link, work_id, index).await?;
+        mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
         // TODO: Fix this
         println!("Did not find original link");
@@ -86,8 +92,14 @@ pub async fn source(
             .replace("_custom1200", "");
 
         println!("Might be {target_link}");
-        fetch_image_data(&state.client, &target_link, work_id, index).await
+        image_data = fetch_image_data(&state.client, &target_link, work_id, index).await?;
+        mime_type = mime_guess::from_path(target_link).first_or_octet_stream();
     }
+    Ok((
+        generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
+        image_data,
+    )
+        .into_response())
 }
 
 async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
@@ -135,4 +147,24 @@ async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -
         .map_err(|_| AppError::ServerUnreachable)?;
 
     Ok(data)
+}
+
+fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 5] {
+    [
+        (header::ACCESS_CONTROL_ALLOW_HEADERS, String::from("GET")),
+        (
+            header::CONTENT_DISPOSITION,
+            format!(
+                r#"inline; filename="{filename}{}""#,
+                mime.suffix()
+                    .map_or_else(String::new, |ext| format!(".{ext}"))
+            ),
+        ),
+        (header::CONTENT_TYPE, mime.to_string()),
+        (
+            header::STRICT_TRANSPORT_SECURITY,
+            String::from("max-age=63072000; includeSubDomains; preload"),
+        ),
+        (header::X_CONTENT_TYPE_OPTIONS, String::from("nosniff")),
+    ]
 }
