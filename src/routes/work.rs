@@ -24,6 +24,8 @@ struct WorkUrls {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkInfo {
+    #[serde(rename = "sl")]
+    num_entries: u8,
     urls: WorkUrls,
     user_illusts: HashMap<String, Option<OtherWorkInfo>>,
 }
@@ -69,7 +71,19 @@ pub async fn source(
     Path((work_id, index)): Path<(u32, u8)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
+    if index == 0 {
+        return Err(AppError::ZeroQuery);
+    }
+
     let data = fetch_work_info(&state.client, work_id).await?;
+
+    // The value of num_entries is 1 more than the actual number of images
+    if index > data.num_entries - 1 {
+        return Err(AppError::TooHighQuery {
+            max: data.num_entries - 1,
+        });
+    }
+
     let image_data;
     let mime_type;
 
@@ -77,8 +91,7 @@ pub async fn source(
         image_data = fetch_image_data(&state.client, &link, work_id, index).await?;
         mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
-        // TODO: Fix this
-        println!("Did not find original link");
+        // TODO: Try different extensions if file isn't found
         let target_link = data
             .user_illusts
             .get(&work_id.to_string())
@@ -91,15 +104,13 @@ pub async fn source(
             .replace("_square1200", "")
             .replace("_custom1200", "");
 
-        println!("Might be {target_link}");
         image_data = fetch_image_data(&state.client, &target_link, work_id, index).await?;
         mime_type = mime_guess::from_path(target_link).first_or_octet_stream();
     }
     Ok((
         generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
         image_data,
-    )
-        .into_response())
+    ))
 }
 
 async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {

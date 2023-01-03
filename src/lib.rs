@@ -42,6 +42,8 @@ type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     ArtworkUnavailable { msg: String },
     ServerUnreachable,
+    ZeroQuery,
+    TooHighQuery { max: u8 },
     Internal { msg: String },
 }
 
@@ -56,6 +58,21 @@ impl IntoResponse for AppError {
                 Self::ServerUnreachable => (
                     StatusCode::BAD_GATEWAY,
                     String::from("Failed to get response from Pixiv server."),
+                ),
+                Self::ZeroQuery => (
+                    StatusCode::BAD_REQUEST,
+                    String::from("The index of the requested image must be at least 1."),
+                ),
+                Self::TooHighQuery { max } => (
+                    StatusCode::BAD_REQUEST,
+                    {
+                        if max > 1 {
+                            format!("The index of the requested image is too high; there are {max} images in this collection.")
+                        } else {
+                            String::from("The index of the requested image is too high; there is 1 image in this collection.")
+                        }
+                    }
+                    
                 ),
                 Self::Internal { msg } => (
                     StatusCode::INTERNAL_SERVER_ERROR,
