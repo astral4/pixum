@@ -1,7 +1,7 @@
-use crate::AppState;
+use crate::{AppResult, AppState};
+use anyhow::{anyhow, ensure, Result};
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum_macros::debug_handler;
+use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -34,30 +34,31 @@ struct QueryResponse {
 /// - HTTP request to Pixiv's API fails
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
-#[debug_handler]
 pub async fn work(
     Path(work_id): Path<u32>,
     State(state): State<Arc<AppState>>,
-) -> Result<String, StatusCode> {
-    let response: QueryResponse = state
-        .client
+) -> AppResult<String> {
+    let data = fetch_work_info(&state.client, work_id).await?;
+
+    Ok(data.urls.original)
+}
+
+async fn fetch_work_info(client: &Client, work_id: u32) -> Result<WorkInfo> {
+    let response: QueryResponse = client
         .get(format!("https://www.pixiv.net/ajax/illust/{work_id}"))
         .send()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .error_for_status()
-        .map_err(|e| e.status().unwrap())?
+        .await?
+        // .error_for_status()?
         .json()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await?;
 
-    if response.error {
-        return Err(StatusCode::NOT_FOUND);
-    }
+    ensure!(!response.error, response.message);
 
     if let BodyData::Success(data) = response.body {
-        Ok(data.urls.original)
+        Ok(data)
     } else {
-        Err(StatusCode::NOT_FOUND)
+        Err(anyhow!(
+            "Information of the requested work could not be retrieved"
+        ))
     }
 }

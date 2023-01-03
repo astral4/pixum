@@ -2,6 +2,10 @@
 #![forbid(unsafe_code)]
 
 mod routes;
+use anyhow::Error;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use reqwest::header::{HeaderMap, HeaderValue};
 pub use routes::*;
 
 use reqwest::Client;
@@ -14,7 +18,11 @@ pub struct AppState {
 impl AppState {
     #[must_use]
     pub fn new() -> Self {
+        let mut headers = HeaderMap::new();
+        headers.append("Accept-Language", HeaderValue::from_static("en"));
+
         let client = Client::builder()
+            .default_headers(headers)
             .https_only(true)
             .timeout(Duration::from_secs(10))
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
@@ -27,5 +35,33 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+type AppResult<T> = Result<T, AppError>;
+
+pub enum AppError {
+    ArtworkUnavailable { msg: String },
+    Internal { msg: String },
+}
+
+impl From<Error> for AppError {
+    fn from(value: Error) -> Self {
+        Self::Internal {
+            msg: value.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::ArtworkUnavailable { msg } => (StatusCode::NOT_FOUND, msg).into_response(),
+            Self::Internal { msg } => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("An internal server error occurred. {msg}"),
+            )
+                .into_response(),
+        }
     }
 }
