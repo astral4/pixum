@@ -1,5 +1,4 @@
-use crate::{AppResult, AppState};
-use anyhow::{anyhow, ensure, Result};
+use crate::{AppError, AppResult, AppState};
 use axum::extract::{Path, State};
 use reqwest::Client;
 use serde::Deserialize;
@@ -43,22 +42,27 @@ pub async fn work(
     Ok(data.urls.original)
 }
 
-async fn fetch_work_info(client: &Client, work_id: u32) -> Result<WorkInfo> {
+async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
     let response: QueryResponse = client
         .get(format!("https://www.pixiv.net/ajax/illust/{work_id}"))
         .send()
-        .await?
-        // .error_for_status()?
+        .await
+        .map_err(|e| AppError::Internal { msg: e.to_string() })?
         .json()
-        .await?;
+        .await
+        .map_err(|_| AppError::ServerUnreachable)?;
 
-    ensure!(!response.error, response.message);
+    if response.error {
+        return Err(AppError::ArtworkUnavailable {
+            msg: response.message,
+        });
+    }
 
     if let BodyData::Success(data) = response.body {
         Ok(data)
     } else {
-        Err(anyhow!(
-            "Information of the requested work could not be retrieved"
-        ))
+        Err(AppError::ArtworkUnavailable {
+            msg: response.message,
+        })
     }
 }

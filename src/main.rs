@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
 
-use axum::{routing::get, Router};
+use axum::{routing::get, Router, Server};
 use pixum::{work, AppState};
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ async fn main() {
         .route("/:work_id", get(work).with_state(shared_state.clone()))
         .with_state(shared_state);
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

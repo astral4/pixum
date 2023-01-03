@@ -2,7 +2,6 @@
 #![forbid(unsafe_code)]
 
 mod routes;
-use anyhow::Error;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -42,26 +41,28 @@ type AppResult<T> = Result<T, AppError>;
 
 pub enum AppError {
     ArtworkUnavailable { msg: String },
+    ServerUnreachable,
     Internal { msg: String },
-}
-
-impl From<Error> for AppError {
-    fn from(value: Error) -> Self {
-        Self::Internal {
-            msg: value.to_string(),
-        }
-    }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        match self {
-            Self::ArtworkUnavailable { msg } => (StatusCode::NOT_FOUND, msg).into_response(),
-            Self::Internal { msg } => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("An internal server error occurred. {msg}"),
-            )
-                .into_response(),
+        {
+            match self {
+                Self::ArtworkUnavailable { msg } => (
+                    StatusCode::NOT_FOUND,
+                    format!("Information of the requested work could not be retrieved. {msg}"),
+                ),
+                Self::ServerUnreachable => (
+                    StatusCode::BAD_GATEWAY,
+                    String::from("Failed to get response from Pixiv server."),
+                ),
+                Self::Internal { msg } => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("An internal server error occurred. {msg}"),
+                ),
+            }
         }
+        .into_response()
     }
 }
