@@ -18,6 +18,7 @@ mime_guess = "2.0.4"
 reqwest = { version = "0.11.13", features = ["json"] }
 serde = { version = "1.0.152", features = ["derive"] }
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.4.13", features = ["buffer", "limit", "timeout"] }
 
 [profile.release]
 strip = true

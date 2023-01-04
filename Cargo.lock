@@ -636,6 +636,7 @@ dependencies = [
  "reqwest",
  "serde",
  "tokio",
+ "tower",
 ]
 
 [[package]]
@@ -943,6 +944,7 @@ dependencies = [
  "pin-project",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
