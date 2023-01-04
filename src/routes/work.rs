@@ -7,9 +7,9 @@ use axum::{
 };
 use bytes::Bytes;
 use mime_guess::Mime;
-use reqwest::Client;
+use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{path::Path as StdPath, sync::Arc};
 
 type PathResult<T> = Result<Path<T>, PathRejection>;
 
@@ -160,20 +160,40 @@ async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -
         format!("{work_id}_p{}", index - 1).as_str(),
     );
 
-    let data = client
-        .get(target_link)
-        .header(
-            "Referer",
-            format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}"),
-        )
-        .send()
-        .await
-        .map_err(|_| AppError::Internal)?
-        .bytes()
-        .await
-        .map_err(|_| AppError::ServerUnreachable)?;
+    let data = fetch_image(
+        client,
+        target_link,
+        format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}"),
+    )
+    .await?
+    .bytes()
+    .await
+    .map_err(|_| AppError::ServerUnreachable)?;
 
     Ok(data)
+}
+
+async fn fetch_image(client: &Client, url: String, referer: String) -> AppResult<Response> {
+    for file_ext in ["jpg", "png", "gif"] {
+        let response = client
+            .get(
+                StdPath::new(&url)
+                    .with_extension(file_ext)
+                    .to_str()
+                    .ok_or(AppError::Internal)?,
+            )
+            .header("Referer", &referer)
+            .send()
+            .await
+            .map_err(|_| AppError::Internal)?;
+
+        match response.status() {
+            StatusCode::OK => return Ok(response),
+            StatusCode::NOT_FOUND => continue,
+            _ => return Err(AppError::ServerUnreachable),
+        }
+    }
+    Err(AppError::ArtworkUnavailable { msg: String::new() })
 }
 
 fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 5] {
