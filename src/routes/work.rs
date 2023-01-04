@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
 };
 use bytes::Bytes;
+use futures::future::join_all;
 use mime_guess::Mime;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
@@ -160,40 +161,41 @@ async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -
         format!("{work_id}_p{}", index - 1).as_str(),
     );
 
-    let data = fetch_image(
-        client,
-        target_link,
-        format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}"),
-    )
-    .await?
+    let data = join_all(["jpg", "png", "gif"].into_iter().map(|ext| {
+        let link = StdPath::new(&target_link)
+            .with_extension(ext)
+            .to_string_lossy()
+            .to_string();
+
+        fetch_image(
+            client,
+            link,
+            format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}"),
+        )
+    }))
+    .await
+    .into_iter()
+    .find_map(Result::ok)
+    .ok_or(AppError::ArtworkUnavailable { msg: String::new() })?
     .bytes()
     .await
-    .map_err(|_| AppError::ServerUnreachable)?;
+    .map_err(|_| AppError::Internal)?;
 
     Ok(data)
 }
 
 async fn fetch_image(client: &Client, url: String, referer: String) -> AppResult<Response> {
-    for file_ext in ["jpg", "png", "gif"] {
-        let response = client
-            .get(
-                StdPath::new(&url)
-                    .with_extension(file_ext)
-                    .to_str()
-                    .ok_or(AppError::Internal)?,
-            )
-            .header("Referer", &referer)
-            .send()
-            .await
-            .map_err(|_| AppError::Internal)?;
+    let response = client
+        .get(url)
+        .header("Referer", &referer)
+        .send()
+        .await
+        .map_err(|_| AppError::Internal)?;
 
-        match response.status() {
-            StatusCode::OK => return Ok(response),
-            StatusCode::NOT_FOUND => continue,
-            _ => return Err(AppError::ServerUnreachable),
-        }
+    match response.status() {
+        StatusCode::OK => Ok(response),
+        _ => Err(AppError::ArtworkUnavailable { msg: String::new() }),
     }
-    Err(AppError::ArtworkUnavailable { msg: String::new() })
 }
 
 fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 5] {
