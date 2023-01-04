@@ -41,7 +41,7 @@ type AppResult<T> = Result<T, AppError>;
 
 pub enum AppError {
     InvalidUrl,
-    ArtworkUnavailable { msg: String },
+    ArtworkUnavailable,
     ServerUnreachable,
     ZeroQuery,
     TooHighQuery { max: u8 },
@@ -56,9 +56,9 @@ impl IntoResponse for AppError {
                     StatusCode::NOT_FOUND,
                     String::from("The requested URL is invalid.")
                 ),
-                Self::ArtworkUnavailable { msg } => (
+                Self::ArtworkUnavailable => (
                     StatusCode::NOT_FOUND,
-                    format!("Information of the requested work could not be retrieved. {msg}"),
+                    String::from("Information of the requested work could not be retrieved. The work might be deleted or have limited visibility."),
                 ),
                 Self::ServerUnreachable => (
                     StatusCode::BAD_GATEWAY,

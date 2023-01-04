@@ -43,7 +43,6 @@ enum BodyData {
 #[derive(Deserialize)]
 struct QueryResponse {
     error: bool,
-    message: String,
     body: BodyData,
 }
 
@@ -112,9 +111,9 @@ async fn get_image_data(client: &Client, work_id: u32, index: u8) -> AppResult<i
         let target_link = data
             .user_illusts
             .get(&work_id.to_string())
-            .ok_or_else(|| AppError::ArtworkUnavailable { msg: String::new() })?
+            .ok_or(AppError::ArtworkUnavailable)?
             .as_ref()
-            .ok_or_else(|| AppError::ArtworkUnavailable { msg: String::new() })?
+            .ok_or(AppError::ArtworkUnavailable)?
             .url
             .replace("c/250x250_80_a2/img-master", "img-original")
             .replace("c/250x250_80_a2/custom-thumb", "img-original")
@@ -141,17 +140,13 @@ async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
         .map_err(|_| AppError::ServerUnreachable)?;
 
     if response.error {
-        return Err(AppError::ArtworkUnavailable {
-            msg: response.message,
-        });
+        return Err(AppError::ArtworkUnavailable);
     }
 
     if let BodyData::Success(data) = response.body {
         Ok(data)
     } else {
-        Err(AppError::ArtworkUnavailable {
-            msg: response.message,
-        })
+        Err(AppError::ArtworkUnavailable)
     }
 }
 
@@ -176,7 +171,7 @@ async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -
     .await
     .into_iter()
     .find_map(Result::ok)
-    .ok_or(AppError::ArtworkUnavailable { msg: String::new() })?
+    .ok_or(AppError::ArtworkUnavailable)?
     .bytes()
     .await
     .map_err(|_| AppError::Internal)?;
@@ -194,7 +189,7 @@ async fn fetch_image(client: &Client, url: String, referer: String) -> AppResult
 
     match response.status() {
         StatusCode::OK => Ok(response),
-        _ => Err(AppError::ArtworkUnavailable { msg: String::new() }),
+        _ => Err(AppError::ArtworkUnavailable),
     }
 }
 
