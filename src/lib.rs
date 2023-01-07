@@ -50,7 +50,7 @@ pub enum AppError {
     ArtworkUnavailable,
     ServerUnreachable,
     ZeroQuery,
-    TooHighQuery { max: u8 },
+    TooHighQuery { max: u16 },
     Internal,
 }
 

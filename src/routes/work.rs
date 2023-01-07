@@ -4,13 +4,14 @@ use axum::{
     extract::{rejection::PathRejection, Path, State},
     http::header,
     response::IntoResponse,
+    Json,
 };
 use bytes::Bytes;
 use deadpool_redis::{redis::Cmd, Connection};
 use futures::future::join_all;
 use mime_guess::Mime;
 use reqwest::{Client, Response, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{path::Path as StdPath, sync::Arc};
 
 type PathResult<T> = Result<Path<T>, PathRejection>;
@@ -30,9 +31,13 @@ struct WorkUrls {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkInfo {
+    illust_title: String,
+    upload_date: String,
     #[serde(rename = "sl")]
-    num_entries: u8,
+    num_entries: u16,
     urls: WorkUrls,
+    user_id: String,
+    user_name: String,
     user_illusts: HashMap<String, Option<OtherWorkInfo>>,
 }
 
@@ -49,6 +54,17 @@ struct QueryResponse {
     body: BodyData,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoResponse {
+    artist_name: String,
+    artist_id: Option<u32>,
+    work_id: u32,
+    title: String,
+    upload_time: String,
+    length: u16,
+}
+
 /// # Errors
 /// This function fails if:
 /// - `work_id` is invalid
@@ -58,15 +74,19 @@ struct QueryResponse {
 pub async fn info(
     work_id: PathResult<u32>,
     State(state): State<Arc<AppState>>,
-) -> AppResult<String> {
+) -> AppResult<Json<InfoResponse>> {
     if let Ok(id) = work_id {
         let data = fetch_work_info(&state.client, id.0).await?;
 
-        if let Some(link) = data.urls.original {
-            Ok(link)
-        } else {
-            Ok(String::from("No link found"))
-        }
+        Ok(Json(InfoResponse {
+            artist_name: data.user_name,
+            artist_id: data.user_id.parse().ok(),
+            work_id: id.0,
+            title: data.illust_title,
+            upload_time: data.upload_date,
+            // The value of num_entries is 1 more than the actual number of images
+            length: data.num_entries - 1,
+        }))
     } else {
         Err(AppError::InvalidUrl)
     }
@@ -80,7 +100,7 @@ pub async fn info(
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
 pub async fn source(
-    work_info: PathResult<(u32, u8)>,
+    work_info: PathResult<(u32, u16)>,
     State(state): State<Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     if let Ok(Path((work_id, index))) = work_info {
@@ -97,7 +117,7 @@ async fn get_image_data(
     client: &Client,
     connection: &mut Connection,
     work_id: u32,
-    index: u8,
+    index: u16,
 ) -> AppResult<impl IntoResponse> {
     if index == 0 {
         return Err(AppError::ZeroQuery);
@@ -194,7 +214,7 @@ async fn fetch_image_data(
     connection: &mut Connection,
     url: &str,
     work_id: u32,
-    index: u8,
+    index: u16,
     url_known: bool,
     update_cache: bool,
 ) -> AppResult<Bytes> {
