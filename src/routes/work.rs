@@ -206,7 +206,7 @@ async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
 
 fn get_image_name_from_url(url: &str, fallback: String) -> String {
     url.split('/')
-        .last()
+        .next_back()
         .map_or_else(|| fallback, ToString::to_string)
 }
 
