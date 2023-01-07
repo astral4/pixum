@@ -15,6 +15,8 @@ use std::{path::Path as StdPath, sync::Arc};
 
 type PathResult<T> = Result<Path<T>, PathRejection>;
 
+const NUM_SECONDS_IN_ONE_YEAR: usize = 60 * 60 * 24 * 365;
+
 #[derive(Deserialize)]
 struct OtherWorkInfo {
     url: String,
@@ -82,8 +84,8 @@ pub async fn source(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     if let Ok(Path((work_id, index))) = work_info {
-        // Database-related errors are not fatal in this application,
-        // but they indicate something is wrong, so the request is not handled afterwards.
+        // The application can work without a database, but a connection error
+        // indicates something is wrong, so the server will immediately return an error.
         let mut connection = state.pool.get().await.map_err(|_| AppError::Internal)?;
         get_image_data(&state.client, &mut connection, work_id, index).await
     } else {
@@ -133,6 +135,8 @@ async fn get_image_data(
             fetch_image_data(client, connection, &link, work_id, index, true, true).await?;
         mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
+        // Original image URLs on Pixiv follow a certain pattern.
+        // If the master/thumbnail image URL is present, the original link can be obtained.
         let target_link = data
             .user_illusts
             .get(&work_id.to_string())
@@ -206,7 +210,7 @@ async fn fetch_image_data(
         {
             #[allow(unused_must_use)]
             if update_cache {
-                Cmd::set_ex(format!("{work_id}_{index}"), url, 60 * 60 * 24 * 365)
+                Cmd::set_ex(format!("{work_id}_{index}"), url, NUM_SECONDS_IN_ONE_YEAR)
                     .query_async::<_, ()>(connection)
                     .await;
             }
@@ -216,11 +220,17 @@ async fn fetch_image_data(
         return Err(AppError::Internal);
     }
 
+    // Only the link for the first image in a collection is given,
+    // so links to other images in the collection must be derived
     let target_link = url.replace(
         format!("{work_id}_p0").as_str(),
         format!("{work_id}_p{}", index - 1).as_str(),
     );
 
+    // Pixiv images are either JPG, PNG, or GIF. The correct extension is
+    // not known at first because the original URL is not provided.
+    // Links with all three file extensions are tested.
+    // If a valid link exists, it is cached and the image there is returned.
     if let Some(response) = join_all(["jpg", "png", "gif"].into_iter().map(|ext| {
         let link = StdPath::new(&target_link)
             .with_extension(ext)
@@ -236,11 +246,9 @@ async fn fetch_image_data(
         let link = response.url().as_str().to_string();
         let data = response.bytes().await.map_err(|_| AppError::Internal)?;
 
-        // The condition "update_cache = true" is not checked here
-        // because it will definitely be cached at this point
         #[allow(unused_must_use)]
         {
-            Cmd::set_ex(format!("{work_id}_{index}"), link, 60 * 60 * 24 * 365)
+            Cmd::set_ex(format!("{work_id}_{index}"), link, NUM_SECONDS_IN_ONE_YEAR)
                 .query_async::<_, ()>(connection)
                 .await;
         }
@@ -254,6 +262,7 @@ async fn fetch_image_data(
 async fn fetch_image(client: &Client, url: String, referer: &str) -> AppResult<Response> {
     let response = client
         .get(url)
+        // Including this Referer header is important because the response will return 403 Forbidden otherwise
         .header("Referer", referer)
         .send()
         .await
