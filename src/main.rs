@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, Router, Server};
+use axum_extra::routing::RouterExt;
 use pixum::{work, AppState};
 use reqwest::header;
 use std::{sync::Arc, time::Duration};
@@ -23,11 +24,11 @@ async fn main() {
     let app = Router::new()
         .fallback(fallback)
         .route("/", get(|| async { "Welcome to Pixum" }))
-        .route(
+        .route_with_tsr(
             "/:work_id",
             get(work::info).with_state(shared_state.clone()),
         )
-        .route(
+        .route_with_tsr(
             "/:work_id/:index",
             get(work::source).with_state(shared_state.clone()),
         )
