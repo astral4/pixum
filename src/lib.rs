@@ -6,12 +6,14 @@ pub use routes::*;
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use deadpool_redis::{Config, Runtime, Pool};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
 use std::time::Duration;
 
 pub struct AppState {
     client: Client,
+    pool: Pool,
 }
 
 impl AppState {
@@ -27,7 +29,11 @@ impl AppState {
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
             .build()
             .expect("Failed to build reqwest Client");
-        Self { client }
+
+        let config = Config::from_url("redis://0.0.0.0:6379/");
+        let pool = config.create_pool(Some(Runtime::Tokio1)).expect("Failed to create database pool");
+        
+        Self { client, pool }
     }
 }
 

@@ -6,6 +6,7 @@ use axum::{
     response::IntoResponse,
 };
 use bytes::Bytes;
+use deadpool_redis::{redis::Cmd, Connection};
 use futures::future::join_all;
 use mime_guess::Mime;
 use reqwest::{Client, Response, StatusCode};
@@ -72,6 +73,7 @@ pub async fn info(
 /// # Errors
 /// This function fails if:
 /// - `work_id` or `index` are invalid
+/// - Database connection fails
 /// - HTTP request to Pixiv's API fails
 /// - Server returns an HTTP error
 /// - Data of the work is unavailable
@@ -80,15 +82,41 @@ pub async fn source(
     State(state): State<Arc<AppState>>,
 ) -> AppResult<impl IntoResponse> {
     if let Ok(Path((work_id, index))) = work_info {
-        get_image_data(&state.client, work_id, index).await
+        // Database-related errors are not fatal in this application,
+        // but they indicate something is wrong, so the request is not handled afterwards.
+        let mut connection = state.pool.get().await.map_err(|_| AppError::Internal)?;
+        get_image_data(&state.client, &mut connection, work_id, index).await
     } else {
         Err(AppError::InvalidUrl)
     }
 }
 
-async fn get_image_data(client: &Client, work_id: u32, index: u8) -> AppResult<impl IntoResponse> {
+async fn get_image_data(
+    client: &Client,
+    connection: &mut Connection,
+    work_id: u32,
+    index: u8,
+) -> AppResult<impl IntoResponse> {
     if index == 0 {
         return Err(AppError::ZeroQuery);
+    }
+
+    let image_data;
+    let mime_type;
+
+    // Checks if the requested image's URL is already cached
+    if let Ok(url) = Cmd::get(format!("{work_id}_{index}"))
+        .query_async::<_, String>(connection)
+        .await
+    {
+        image_data =
+            fetch_image_data(client, connection, &url, work_id, index, true, false).await?;
+        mime_type = mime_guess::from_path(url).first_or_octet_stream();
+
+        return Ok((
+            generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
+            image_data,
+        ));
     }
 
     let data = fetch_work_info(client, work_id).await?;
@@ -100,14 +128,11 @@ async fn get_image_data(client: &Client, work_id: u32, index: u8) -> AppResult<i
         });
     }
 
-    let image_data;
-    let mime_type;
-
     if let Some(link) = data.urls.original {
-        image_data = fetch_image_data(client, &link, work_id, index).await?;
+        image_data =
+            fetch_image_data(client, connection, &link, work_id, index, true, true).await?;
         mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
-        // TODO: Try different extensions if file isn't found
         let target_link = data
             .user_illusts
             .get(&work_id.to_string())
@@ -120,9 +145,19 @@ async fn get_image_data(client: &Client, work_id: u32, index: u8) -> AppResult<i
             .replace("_square1200", "")
             .replace("_custom1200", "");
 
-        image_data = fetch_image_data(client, &target_link, work_id, index).await?;
+        image_data = fetch_image_data(
+            client,
+            connection,
+            &target_link,
+            work_id,
+            index,
+            false,
+            true,
+        )
+        .await?;
         mime_type = mime_guess::from_path(target_link).first_or_octet_stream();
     }
+
     Ok((
         generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
         image_data,
@@ -150,39 +185,76 @@ async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
     }
 }
 
-async fn fetch_image_data(client: &Client, url: &str, work_id: u32, index: u8) -> AppResult<Bytes> {
+async fn fetch_image_data(
+    client: &Client,
+    connection: &mut Connection,
+    url: &str,
+    work_id: u32,
+    index: u8,
+    url_known: bool,
+    update_cache: bool,
+) -> AppResult<Bytes> {
+    let referer_string =
+        format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}");
+
+    if url_known {
+        if let Ok(data) = fetch_image(client, url.to_string(), &referer_string)
+            .await
+            .map_err(|_| AppError::Internal)?
+            .bytes()
+            .await
+        {
+            #[allow(unused_must_use)]
+            if update_cache {
+                Cmd::set_ex(format!("{work_id}_{index}"), url, 60 * 60 * 24 * 365)
+                    .query_async::<_, ()>(connection)
+                    .await;
+            }
+
+            return Ok(data);
+        }
+        return Err(AppError::Internal);
+    }
+
     let target_link = url.replace(
         format!("{work_id}_p0").as_str(),
         format!("{work_id}_p{}", index - 1).as_str(),
     );
 
-    let data = join_all(["jpg", "png", "gif"].into_iter().map(|ext| {
+    if let Some(response) = join_all(["jpg", "png", "gif"].into_iter().map(|ext| {
         let link = StdPath::new(&target_link)
             .with_extension(ext)
             .to_string_lossy()
             .to_string();
 
-        fetch_image(
-            client,
-            link,
-            format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}"),
-        )
+        fetch_image(client, link, &referer_string)
     }))
     .await
     .into_iter()
     .find_map(Result::ok)
-    .ok_or(AppError::ArtworkUnavailable)?
-    .bytes()
-    .await
-    .map_err(|_| AppError::Internal)?;
+    {
+        let link = response.url().as_str().to_string();
+        let data = response.bytes().await.map_err(|_| AppError::Internal)?;
 
-    Ok(data)
+        // The condition "update_cache = true" is not checked here
+        // because it will definitely be cached at this point
+        #[allow(unused_must_use)]
+        {
+            Cmd::set_ex(format!("{work_id}_{index}"), link, 60 * 60 * 24 * 365)
+                .query_async::<_, ()>(connection)
+                .await;
+        }
+
+        Ok(data)
+    } else {
+        Err(AppError::ArtworkUnavailable)
+    }
 }
 
-async fn fetch_image(client: &Client, url: String, referer: String) -> AppResult<Response> {
+async fn fetch_image(client: &Client, url: String, referer: &str) -> AppResult<Response> {
     let response = client
         .get(url)
-        .header("Referer", &referer)
+        .header("Referer", referer)
         .send()
         .await
         .map_err(|_| AppError::Internal)?;

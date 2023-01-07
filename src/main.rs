@@ -35,8 +35,8 @@ async fn main() {
                 .layer(HandleErrorLayer::new(|_| async {
                     StatusCode::TOO_MANY_REQUESTS
                 }))
-                .buffer(20)
-                .rate_limit(5, Duration::from_secs(1))
+                .buffer(50)
+                .rate_limit(50, Duration::from_secs(10))
                 .layer(HandleErrorLayer::new(|_| async {
                     StatusCode::REQUEST_TIMEOUT
                 }))
