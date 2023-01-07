@@ -123,6 +123,7 @@ async fn get_image_data(
         return Err(AppError::ZeroQuery);
     }
 
+    let file_name;
     let image_data;
     let mime_type;
 
@@ -131,14 +132,11 @@ async fn get_image_data(
         .query_async::<_, String>(connection)
         .await
     {
-        image_data =
+        (file_name, image_data) =
             fetch_image_data(client, connection, &url, work_id, index, true, false).await?;
         mime_type = mime_guess::from_path(url).first_or_octet_stream();
 
-        return Ok((
-            generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
-            image_data,
-        ));
+        return Ok((generate_http_headers(&file_name, &mime_type), image_data));
     }
 
     let data = fetch_work_info(client, work_id).await?;
@@ -151,7 +149,7 @@ async fn get_image_data(
     }
 
     if let Some(link) = data.urls.original {
-        image_data =
+        (file_name, image_data) =
             fetch_image_data(client, connection, &link, work_id, index, true, true).await?;
         mime_type = mime_guess::from_path(link).first_or_octet_stream();
     } else {
@@ -169,7 +167,7 @@ async fn get_image_data(
             .replace("_square1200", "")
             .replace("_custom1200", "");
 
-        image_data = fetch_image_data(
+        (file_name, image_data) = fetch_image_data(
             client,
             connection,
             &target_link,
@@ -182,10 +180,7 @@ async fn get_image_data(
         mime_type = mime_guess::from_path(target_link).first_or_octet_stream();
     }
 
-    Ok((
-        generate_http_headers(&format!("{work_id}-{index}"), &mime_type),
-        image_data,
-    ))
+    Ok((generate_http_headers(&file_name, &mime_type), image_data))
 }
 
 async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
@@ -209,6 +204,12 @@ async fn fetch_work_info(client: &Client, work_id: u32) -> AppResult<WorkInfo> {
     }
 }
 
+fn get_image_name_from_url(url: &str, fallback: String) -> String {
+    url.split('/')
+        .last()
+        .map_or_else(|| fallback, ToString::to_string)
+}
+
 async fn fetch_image_data(
     client: &Client,
     connection: &mut Connection,
@@ -217,7 +218,7 @@ async fn fetch_image_data(
     index: u16,
     url_known: bool,
     update_cache: bool,
-) -> AppResult<Bytes> {
+) -> AppResult<(String, Bytes)> {
     let referer_string =
         format!("https://www.pixiv.net/member_illust.php?mode=medium&illust_id={work_id}");
 
@@ -235,7 +236,10 @@ async fn fetch_image_data(
                     .await;
             }
 
-            return Ok(data);
+            return Ok((
+                get_image_name_from_url(url, format!("{work_id}_p{}", index - 1)),
+                data,
+            ));
         }
         return Err(AppError::Internal);
     }
@@ -268,12 +272,15 @@ async fn fetch_image_data(
 
         #[allow(unused_must_use)]
         {
-            Cmd::set_ex(format!("{work_id}_{index}"), link, NUM_SECONDS_IN_ONE_YEAR)
+            Cmd::set_ex(format!("{work_id}_{index}"), &link, NUM_SECONDS_IN_ONE_YEAR)
                 .query_async::<_, ()>(connection)
                 .await;
         }
 
-        Ok(data)
+        Ok((
+            get_image_name_from_url(&link, format!("{work_id}_p{}", index - 1)),
+            data,
+        ))
     } else {
         Err(AppError::ArtworkUnavailable)
     }
@@ -298,11 +305,7 @@ fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, S
     [
         (
             header::CONTENT_DISPOSITION,
-            format!(
-                r#"inline; filename="{filename}{}""#,
-                mime.suffix()
-                    .map_or_else(String::new, |ext| format!(".{ext}"))
-            ),
+            format!(r#"inline; filename="{filename}""#),
         ),
         (header::CONTENT_TYPE, mime.to_string()),
     ]
