@@ -3,8 +3,10 @@
 
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, Router, Server};
 use pixum::{work, AppState};
+use reqwest::header;
 use std::{sync::Arc, time::Duration};
 use tower::ServiceBuilder;
+use tower_http::ServiceBuilderExt;
 
 #[allow(clippy::unused_async)]
 async fn fallback() -> (StatusCode, String) {
@@ -32,21 +34,30 @@ async fn main() {
         .with_state(shared_state)
         .layer(
             ServiceBuilder::new()
-                // Fallible middlewares (timeouts, rate-limiting, etc.) must be
-                // wrapped in Axum's error-handling layer. See
-                // https://docs.rs/axum/latest/axum/error_handling/index.html#applying-fallible-middleware
+                .override_response_header(
+                    header::STRICT_TRANSPORT_SECURITY,
+                    header::HeaderValue::from_static(
+                        "max-age=63072000; includeSubDomains; preload",
+                    ),
+                )
+                .insert_response_header_if_not_present(
+                    header::ACCESS_CONTROL_ALLOW_HEADERS,
+                    header::HeaderValue::from_static("GET"),
+                )
+                .override_response_header(
+                    header::X_CONTENT_TYPE_OPTIONS,
+                    header::HeaderValue::from_static("nosniff"),
+                )
+                .compression()
                 .layer(HandleErrorLayer::new(|_| async {
                     StatusCode::TOO_MANY_REQUESTS
                 }))
                 // Tower's rate-limiting middleware does not implement Clone
                 // (required by HandleErrorLayer)
                 // so a buffer middleware is also used.
-                .buffer(50)
+                .buffer(100)
                 .rate_limit(50, Duration::from_secs(10))
-                .layer(HandleErrorLayer::new(|_| async {
-                    StatusCode::REQUEST_TIMEOUT
-                }))
-                .timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(15))
                 .concurrency_limit(100),
         );
 

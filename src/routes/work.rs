@@ -294,9 +294,8 @@ async fn fetch_image(client: &Client, url: String, referer: &str) -> AppResult<R
     }
 }
 
-fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 5] {
+fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 2] {
     [
-        (header::ACCESS_CONTROL_ALLOW_HEADERS, String::from("GET")),
         (
             header::CONTENT_DISPOSITION,
             format!(
@@ -306,10 +305,5 @@ fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, S
             ),
         ),
         (header::CONTENT_TYPE, mime.to_string()),
-        (
-            header::STRICT_TRANSPORT_SECURITY,
-            String::from("max-age=63072000; includeSubDomains; preload"),
-        ),
-        (header::X_CONTENT_TYPE_OPTIONS, String::from("nosniff")),
     ]
 }
