@@ -49,6 +49,10 @@ async fn main() {
                     header::X_CONTENT_TYPE_OPTIONS,
                     header::HeaderValue::from_static("nosniff"),
                 )
+                .override_response_header(
+                    header::HeaderName::from_static("x-robots-tag"),
+                    header::HeaderValue::from_static("noindex"),
+                )
                 .compression()
                 .layer(HandleErrorLayer::new(|_| async {
                     StatusCode::TOO_MANY_REQUESTS
