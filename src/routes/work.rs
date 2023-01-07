@@ -127,16 +127,32 @@ async fn get_image_data(
     let image_data;
     let mime_type;
 
-    // Checks if the requested image's URL is already cached
-    if let Ok(url) = Cmd::get(format!("{work_id}_{index}"))
-        .query_async::<_, String>(connection)
-        .await
     {
-        (file_name, image_data) =
-            fetch_image_data(client, connection, &url, work_id, index, true, false).await?;
-        mime_type = mime_guess::from_path(url).first_or_octet_stream();
+        let cache_entry_name = format!("{work_id}_{index}");
 
-        return Ok((generate_http_headers(&file_name, &mime_type), image_data));
+        // Checks if the requested image's URL is already cached
+        if let Ok(url) = Cmd::get(&cache_entry_name)
+            .query_async::<_, String>(connection)
+            .await
+        {
+            return match fetch_image_data(client, connection, &url, work_id, index, true, false)
+                .await
+            {
+                Ok((file_name, image_data)) => {
+                    mime_type = mime_guess::from_path(url).first_or_octet_stream();
+                    Ok((generate_http_headers(&file_name, &mime_type), image_data))
+                }
+                Err(err) => {
+                    #[allow(unused_must_use)]
+                    if let AppError::WrongArtworkUrl = err {
+                        Cmd::del(cache_entry_name)
+                            .query_async::<_, ()>(connection)
+                            .await;
+                    }
+                    Err(err)
+                }
+            };
+        }
     }
 
     let data = fetch_work_info(client, work_id).await?;
@@ -297,6 +313,7 @@ async fn fetch_image(client: &Client, url: String, referer: &str) -> AppResult<R
 
     match response.status() {
         StatusCode::OK => Ok(response),
+        StatusCode::NOT_FOUND => Err(AppError::WrongArtworkUrl),
         _ => Err(AppError::ArtworkUnavailable),
     }
 }

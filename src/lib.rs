@@ -48,6 +48,8 @@ type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     InvalidUrl,
     ArtworkUnavailable,
+    // This variant is essentially ArtworkUnavailable but for cache invalidation purposes
+    WrongArtworkUrl,
     ServerUnreachable,
     ZeroQuery,
     TooHighQuery { max: u16 },
@@ -62,7 +64,7 @@ impl IntoResponse for AppError {
                     StatusCode::NOT_FOUND,
                     String::from("The requested URL is invalid.")
                 ),
-                Self::ArtworkUnavailable => (
+                Self::ArtworkUnavailable | Self::WrongArtworkUrl => (
                     StatusCode::NOT_FOUND,
                     String::from("Information of the requested work could not be retrieved. The work might be deleted or have limited visibility."),
                 ),
