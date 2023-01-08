@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use deadpool_redis::{Config, Runtime, Pool};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
-use std::time::Duration;
+use std::{env, time::Duration};
 
 pub struct AppState {
     client: Client,
@@ -30,8 +30,14 @@ impl AppState {
             .build()
             .expect("Failed to build reqwest Client");
 
-        let config = Config::from_url("redis://redis:6379/");
-        let pool = config.create_pool(Some(Runtime::Tokio1)).expect("Failed to create database pool");
+        let redis_url = format!(
+            "redis://{}:{}",
+            env::var("REDIS_HOST").unwrap_or_else(|_| String::from("127.0.0.1")),
+            env::var("REDIS_PORT").unwrap_or_else(|_| String::from("6379"))
+        );
+        let pool = Config::from_url(redis_url)
+            .create_pool(Some(Runtime::Tokio1))
+            .expect("Failed to create database pool");
         
         Self { client, pool }
     }
