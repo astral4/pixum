@@ -11,4 +11,4 @@ RUN cargo build --release
 
 FROM debian:bullseye-slim
 COPY --from=build /pixum/target/release/pixum .
-CMD ["./pixum"]
+ENTRYPOINT [ "./pixum" ]
