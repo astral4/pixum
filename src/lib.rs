@@ -30,7 +30,7 @@ impl AppState {
             .build()
             .expect("Failed to build reqwest Client");
 
-        let config = Config::from_url("redis://0.0.0.0:6379/");
+        let config = Config::from_url("redis://127.0.0.1:6379/");
         let pool = config.create_pool(Some(Runtime::Tokio1)).expect("Failed to create database pool");
         
         Self { client, pool }
