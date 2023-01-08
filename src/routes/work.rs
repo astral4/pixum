@@ -16,8 +16,6 @@ use std::{path::Path as StdPath, sync::Arc};
 
 type PathResult<T> = Result<Path<T>, PathRejection>;
 
-const NUM_SECONDS_IN_ONE_YEAR: usize = 60 * 60 * 24 * 365;
-
 #[derive(Deserialize)]
 struct OtherWorkInfo {
     url: String,
@@ -247,7 +245,7 @@ async fn fetch_image_data(
         {
             #[allow(unused_must_use)]
             if update_cache {
-                Cmd::set_ex(format!("{work_id}_{index}"), url, NUM_SECONDS_IN_ONE_YEAR)
+                Cmd::set(format!("{work_id}_{index}"), url)
                     .query_async::<_, ()>(connection)
                     .await;
             }
@@ -288,7 +286,7 @@ async fn fetch_image_data(
 
         #[allow(unused_must_use)]
         {
-            Cmd::set_ex(format!("{work_id}_{index}"), &link, NUM_SECONDS_IN_ONE_YEAR)
+            Cmd::set(format!("{work_id}_{index}"), &link)
                 .query_async::<_, ()>(connection)
                 .await;
         }
