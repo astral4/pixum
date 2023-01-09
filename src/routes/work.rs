@@ -143,7 +143,7 @@ async fn get_image_data(
                 Err(err) => {
                     #[allow(unused_must_use)]
                     if let AppError::WrongArtworkUrl = err {
-                        Cmd::del(cache_entry_name)
+                        Cmd::unlink(cache_entry_name)
                             .query_async::<_, ()>(connection)
                             .await;
                     }

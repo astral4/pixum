@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: api.Dockerfile
     environment:
       - REDIS_HOST=pixumcache
       - REDIS_PORT=6379
@@ -13,10 +13,9 @@ services:
     depends_on:
       - redis
   redis:
-    image: redis:7.0.7-bullseye
-    command: redis-server /usr/local/etc/redis/redis.conf
-    volumes:
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    build:
+      context: .
+      dockerfile: redis.Dockerfile
     networks:
       cache:
         aliases:

@@ -10,5 +10,9 @@ COPY ./src ./src
 RUN cargo build --release
 
 FROM debian:bullseye-slim
+RUN apt-get update && apt-get -y upgrade && apt-get autoremove
+# run as non-root user
+RUN useradd --create-home pixum --shell /bin/false
+USER pixum
 COPY --from=build /pixum/target/release/pixum .
 ENTRYPOINT [ "./pixum" ]
