@@ -1,9 +1,9 @@
 use crate::{AppError, AppResult, AppState};
 use ahash::HashMap;
+use axum::http::header::{self, HeaderValue};
 use axum::{
     extract::{rejection::PathRejection, Path, State},
-    http::header,
-    response::IntoResponse,
+    response::{IntoResponse, Response as AxumResponse},
     Json,
 };
 use bytes::Bytes;
@@ -72,11 +72,11 @@ pub struct InfoResponse {
 pub async fn info(
     work_id: PathResult<u32>,
     State(state): State<Arc<AppState>>,
-) -> AppResult<Json<InfoResponse>> {
+) -> AppResult<AxumResponse> {
     if let Ok(id) = work_id {
         let data = fetch_work_info(&state.client, id.0).await?;
 
-        Ok(Json(InfoResponse {
+        let mut response = Json(InfoResponse {
             artist_name: data.user_name,
             artist_id: data.user_id.parse().ok(),
             work_id: id.0,
@@ -84,7 +84,19 @@ pub async fn info(
             upload_time: data.upload_date,
             // The value of num_entries is 1 more than the actual number of images
             length: data.num_entries - 1,
-        }))
+        })
+        .into_response();
+
+        // Axum's `Json` handler only sets the Content-Type header to "application/json".
+        // JSON is supposed to be interpreted as UTF-8 by default (see https://www.rfc-editor.org/rfc/rfc8259#section-8.1),
+        // but Safari does not obey this, so the header is adjusted for cross-browser compatibility.
+        let headers = response.headers_mut();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json; charset=utf-8"),
+        );
+
+        Ok(response)
     } else {
         Err(AppError::InvalidUrl)
     }
@@ -316,12 +328,16 @@ async fn fetch_image(client: &Client, url: String, referer: &str) -> AppResult<R
     }
 }
 
-fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 2] {
+fn generate_http_headers(filename: &str, mime: &Mime) -> [(header::HeaderName, String); 3] {
     [
         (
             header::CONTENT_DISPOSITION,
             format!(r#"inline; filename="{filename}""#),
         ),
         (header::CONTENT_TYPE, mime.to_string()),
+        (
+            header::CACHE_CONTROL,
+            String::from("max-age=31536000, public, immutable, no-transform"),
+        ),
     ]
 }

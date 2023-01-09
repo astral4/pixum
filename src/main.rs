@@ -1,10 +1,10 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
 
+use axum::http::header::{self, HeaderName, HeaderValue};
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, Router, Server};
 use axum_extra::routing::RouterExt;
 use pixum::{work, AppState};
-use reqwest::header;
 use std::{sync::Arc, time::Duration};
 use tower::ServiceBuilder;
 use tower_http::ServiceBuilderExt;
@@ -37,21 +37,26 @@ async fn main() {
             ServiceBuilder::new()
                 .override_response_header(
                     header::STRICT_TRANSPORT_SECURITY,
-                    header::HeaderValue::from_static(
-                        "max-age=63072000; includeSubDomains; preload",
-                    ),
+                    HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
                 )
                 .insert_response_header_if_not_present(
-                    header::ACCESS_CONTROL_ALLOW_HEADERS,
-                    header::HeaderValue::from_static("GET"),
+                    header::ACCESS_CONTROL_ALLOW_METHODS,
+                    HeaderValue::from_static("GET"),
+                )
+                .override_response_header(
+                    header::CONTENT_SECURITY_POLICY,
+                    HeaderValue::from_static(
+                        "default-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests;",
+                    ),
                 )
                 .override_response_header(
                     header::X_CONTENT_TYPE_OPTIONS,
-                    header::HeaderValue::from_static("nosniff"),
+                    HeaderValue::from_static("nosniff"),
                 )
+                .override_response_header(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"))
                 .override_response_header(
-                    header::HeaderName::from_static("x-robots-tag"),
-                    header::HeaderValue::from_static("noindex"),
+                    HeaderName::from_static("x-robots-tag"),
+                    HeaderValue::from_static("noindex"),
                 )
                 .compression()
                 .layer(HandleErrorLayer::new(|_| async {

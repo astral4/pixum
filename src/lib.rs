@@ -20,12 +20,14 @@ impl AppState {
     #[must_use]
     pub fn new() -> Self {
         let mut headers = HeaderMap::new();
+        headers.append("Accept", HeaderValue::from_static("application/json, image/*"));
         headers.append("Accept-Language", HeaderValue::from_static("en"));
 
         let client = Client::builder()
             .default_headers(headers)
             .https_only(true)
             .timeout(Duration::from_secs(10))
+            .use_rustls_tls()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
             .build()
             .expect("Failed to build reqwest Client");
