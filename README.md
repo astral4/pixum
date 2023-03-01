@@ -1,11 +1,11 @@
 # Pixum
 Pixum is a Pixiv artwork API built with [Axum](https://github.com/tokio-rs/axum), a Rust web framework.
-[Redis](https://redis.io/) is used for caching image URLs. The application is containerized with [Docker](https://www.docker.com/) + [Docker Compose](https://docs.docker.com/compose/).
+[Redis](https://redis.io/) is used for caching image URLs. The application is containerized with [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/).
 
 ## API reference
 - `/`: Introduction page
-- `/id`: Gets information about the work with content ID `id`
-- `/id/num`: Gets the image at content ID `id` on page number `num`
+- `/:id`: Gets information about the work with content ID `id`
+- `/:id/:num`: Gets the image at content ID `id` on page number `num`
 
 ## Quickstart
 To run the app locally:
