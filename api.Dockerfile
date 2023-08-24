@@ -1,4 +1,4 @@
-FROM rust:1.66-slim-bullseye as build
+FROM rust:1.72-slim-bookworm as build
 # install https://lib.rs/crates/cargo-build-dependencies to cache deps in a separate layer
 RUN cargo install cargo-build-dependencies
 RUN USER=root cargo new --bin pixum
@@ -9,7 +9,7 @@ RUN cargo build-dependencies --release
 COPY ./src ./src
 RUN cargo build --release
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get -y upgrade && apt-get autoremove
 # run as non-root user
 RUN useradd --create-home pixum --shell /bin/false

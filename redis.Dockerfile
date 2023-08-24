@@ -1,4 +1,4 @@
-FROM redis:7.0-bullseye
+FROM redis:7.2-bookworm
 RUN apt-get update && apt-get -y upgrade && apt-get autoremove
 # run as non-root user
 RUN useradd --create-home pixum --shell /bin/false
