@@ -1,7 +1,7 @@
 [package]
 name = "pixum"
 version = "0.1.0"
-authors = ["astral4 <88992929+astral4@users.noreply.github.com>"]
+authors = ["astral4"]
 edition = "2021"
 license = "MIT"
 publish = false
