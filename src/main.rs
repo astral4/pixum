@@ -2,10 +2,11 @@
 #![forbid(unsafe_code)]
 
 use axum::http::header::{self, HeaderName, HeaderValue};
-use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, Router, Server};
+use axum::{error_handling::HandleErrorLayer, http::StatusCode, routing::get, Router};
 use axum_extra::routing::RouterExt;
 use pixum::{work, AppState};
-use std::{sync::Arc, time::Duration};
+use std::{net::Ipv4Addr, sync::Arc, time::Duration};
+use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::ServiceBuilderExt;
 
@@ -71,8 +72,11 @@ async fn main() {
                 .concurrency_limit(100),
         );
 
-    Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind((Ipv4Addr::new(0, 0, 0, 0), 3000))
+        .await
+        .unwrap();
+
+    axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
 }

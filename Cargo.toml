@@ -10,18 +10,18 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-ahash = { version = "0.8.3", features = ["serde"] }
-axum = { version = "0.6.20", features = ["http2"] }
-axum-extra = "0.7.7"
-bytes = { version = "1.4.0", features = ["serde"] }
-deadpool-redis = "0.12.0"
-futures = "0.3.28"
+ahash = { version = "0.8.9", features = ["serde"] }
+axum = { version = "0.7.4", features = ["http2"] }
+axum-extra = "0.9.2"
+bytes = { version = "1.5.0", features = ["serde"] }
+deadpool-redis = "0.14.0"
+futures = "0.3.30"
 mime_guess = "2.0.4"
-reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.186", features = ["derive"] }
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.11.24", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0.197", features = ["derive"] }
+tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
 tower = { version = "0.4.13", features = ["buffer", "limit", "timeout"] }
-tower-http = { version = "0.4.3", features = ["async-compression", "compression-br", "set-header", "util"] }
+tower-http = { version = "0.5.1", features = ["async-compression", "compression-br", "set-header", "util"] }
 
 [profile.release]
 strip = true
